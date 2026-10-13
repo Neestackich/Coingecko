@@ -7,6 +7,7 @@
 
 import Foundation
 import Observation
+import SwiftUI
 
 @Observable
 final class CGPriceListViewModel {
@@ -18,11 +19,13 @@ final class CGPriceListViewModel {
     private(set) var lastUpdated: String?
     private(set) var isRefreshFailing = false
 
+    @ObservationIgnored private(set) var loadDataTask: Task<Void, Never>?
+
     @ObservationIgnored private var dailyPrices: [CGDailyPrice] = []
-    @ObservationIgnored private var liveUpdatesTask: Task<Void, Never>?
 
     private let priceService: CGBitcoinPriceServiceType
     private let dateProvider: CGDateProviderType
+    private let refreshInterval: Duration
 
     private struct Constants {
         static let days = 14
@@ -35,10 +38,12 @@ final class CGPriceListViewModel {
 
     init(
         priceService: CGBitcoinPriceServiceType,
-        dateProvider: CGDateProviderType
+        dateProvider: CGDateProviderType,
+        refreshInterval: Duration = Constants.refreshInterval
     ) {
         self.priceService = priceService
         self.dateProvider = dateProvider
+        self.refreshInterval = refreshInterval
     }
 
 }
@@ -47,38 +52,49 @@ final class CGPriceListViewModel {
 
 extension CGPriceListViewModel {
 
-    func startLiveUpdates() {
-        liveUpdatesTask?.cancel()
-
-        liveUpdatesTask = Task { [weak self] in
-            while !Task.isCancelled {
-                if let newestDay = self?.dailyPrices.first?.date,
-                   self?.dateProvider.isDateSameAsToday(newestDay) == true {
-                    await self?.refreshTodaysPrice(on: newestDay)
-                } else {
-                    await self?.loadHistory()
-                }
-
-                try? await Task.sleep(for: Constants.refreshInterval)
-            }
+    func handleScenePhase(_ phase: ScenePhase) {
+        if phase == .active {
+            startLiveDataUpdates()
+        } else {
+            stopLiveDataUpdates()
         }
     }
 
-    func stopLiveUpdates() {
-        liveUpdatesTask?.cancel()
-        liveUpdatesTask = nil
-    }
-
     func refresh() async {
-        stopLiveUpdates()
+        loadDataTask?.cancel()
 
-        await loadHistory()
+        let refreshTask = Task<Void, Never> { [weak self] in
+            await self?.loadHistory()
+        }
 
-        startLiveUpdates()
+        loadDataTask = refreshTask
+
+        await withTaskCancellationHandler {
+            await refreshTask.value
+        } onCancel: {
+            refreshTask.cancel()
+        }
+
+        guard loadDataTask == refreshTask, !refreshTask.isCancelled else {
+            return
+        }
+
+        startLiveUpdatesLoop(updatingImmediately: false)
     }
 
     func retry() {
-        startLiveUpdates()
+        if dailyPrices.isEmpty {
+            rows = CGPriceRowBindableData.placeholders(count: Constants.days)
+            state = .loading
+        } else {
+            state = .loaded
+        }
+
+        startLiveDataUpdates()
+    }
+
+    func getSectionHeader() -> String {
+        return String(localized: .priceListSectionHeader(Constants.days, Constants.currency.code))
     }
 
     func makeDetailViewModel(for date: Date) -> CGPriceDetailViewModel {
@@ -91,14 +107,55 @@ extension CGPriceListViewModel {
 
 private extension CGPriceListViewModel {
 
-    func loadHistory() async {
-        if dailyPrices.isEmpty {
-            rows = CGPriceRowBindableData.placeholders(count: Constants.days)
-            state = .loading
+    func startLiveDataUpdates() {
+        if !dailyPrices.isEmpty {
+            updateRows()
         }
 
+        startLiveUpdatesLoop(updatingImmediately: true)
+    }
+
+    func stopLiveDataUpdates() {
+        loadDataTask?.cancel()
+        loadDataTask = nil
+    }
+
+    func startLiveUpdatesLoop(updatingImmediately: Bool) {
+        loadDataTask?.cancel()
+
+        loadDataTask = Task { [weak self, refreshInterval] in
+            if updatingImmediately {
+                await self?.loadLatestPrices()
+            }
+
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: refreshInterval)
+                } catch {
+                    return
+                }
+
+                guard let self else {
+                    return
+                }
+
+                await self.loadLatestPrices()
+            }
+        }
+    }
+
+    func loadLatestPrices() async {
+        if let newestDay = dailyPrices.first?.date,
+           dateProvider.isDateSameAsToday(newestDay) {
+            await refreshTodaysPrice(on: newestDay)
+        } else {
+            await loadHistory()
+        }
+    }
+
+    func loadHistory() async {
         do {
-            let prices = try await priceService.fetchDailyPrices(days: Constants.days, currency: Constants.currency)
+            let prices = try await priceService.fetchDailyPricesList(days: Constants.days, currency: Constants.currency)
 
             try Task.checkCancellation()
 
@@ -112,7 +169,7 @@ private extension CGPriceListViewModel {
 
     func refreshTodaysPrice(on day: Date) async {
         do {
-            let todaysPrice = try await priceService.fetchCurrentPrice(currency: Constants.currency)
+            let todaysPrice = try await priceService.fetchCurrentDayPrice(currency: Constants.currency)
 
             try Task.checkCancellation()
 

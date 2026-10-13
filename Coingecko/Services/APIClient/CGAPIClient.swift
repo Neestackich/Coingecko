@@ -10,16 +10,19 @@ import Foundation
 nonisolated final class CGAPIClient: CGAPIClientType {
 
     private let config: CGAPIConfigType
+    private let session: URLSession
 
     private struct Constants {
         static let apiKeyHeader = "x-cg-demo-api-key"
         static let acceptHeader = "Accept"
         static let jsonContentType = "application/json"
         static let successStatusCodes = 200..<300
+        static let requestTimeout: TimeInterval = 15
     }
 
-    init(config: CGAPIConfigType) {
+    init(config: CGAPIConfigType, session: URLSession = .shared) {
         self.config = config
+        self.session = session
     }
 
 }
@@ -59,6 +62,7 @@ private nonisolated extension CGAPIClient {
 
         var request = URLRequest(url: url)
         request.httpMethod = endpoint.method.rawValue
+        request.timeoutInterval = Constants.requestTimeout
         request.setValue(Constants.jsonContentType, forHTTPHeaderField: Constants.acceptHeader)
 
         if let apiKey = config.apiKey {
@@ -70,7 +74,7 @@ private nonisolated extension CGAPIClient {
 
     func performRequest(_ request: URLRequest) async throws -> (Data, URLResponse) {
         do {
-            return try await URLSession.shared.data(for: request)
+            return try await session.data(for: request)
         } catch let error as URLError where error.code == .cancelled {
             throw CancellationError()
         } catch let error as URLError {

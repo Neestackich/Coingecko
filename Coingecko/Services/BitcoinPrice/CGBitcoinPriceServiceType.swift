@@ -8,7 +8,7 @@
 import Foundation
 
 nonisolated protocol CGBitcoinPriceServiceType: Sendable {
-    func fetchDailyPrices(days: Int, currency: CGCurrency) async throws -> [CGDailyPrice]
-    func fetchCurrentPrice(currency: CGCurrency) async throws -> CGDailyPrice
-    func fetchPrices(on date: Date, currencies: [CGCurrency]) async throws -> [CGCurrency: Double]
+    func fetchDailyPricesList(days: Int, currency: CGCurrency) async throws -> [CGDailyPrice]
+    func fetchCurrentDayPrice(currency: CGCurrency) async throws -> CGDailyPrice
+    func fetchMultipleCurrenciesPrices(on date: Date, currencies: [CGCurrency]) async throws -> [CGCurrency: Double]
 }

@@ -14,6 +14,7 @@ struct CGPriceListView: View {
     private struct Constants {
         static let warningIconName = "exclamationmark.triangle.fill"
         static let emptyIconName = "chart.line.downtrend.xyaxis"
+        static let rowIdentifierPrefix = "priceListRow_"
     }
 
     init(viewModel: CGPriceListViewModel) {
@@ -29,7 +30,7 @@ struct CGPriceListView: View {
                 }
         }
         .onChange(of: scenePhase, initial: true) { _, newPhase in
-            handleScenePhase(newPhase)
+            viewModel.handleScenePhase(newPhase)
         }
     }
 }
@@ -56,9 +57,10 @@ private extension CGPriceListView {
                     NavigationLink(value: row.id) {
                         CGPriceRowView(data: row)
                     }
+                    .accessibilityIdentifier(Constants.rowIdentifierPrefix + row.id.apiDateString())
                 }
             } header: {
-                Text(.priceListSectionHeader)
+                Text(viewModel.getSectionHeader())
             } footer: {
                 footer
             }
@@ -100,14 +102,6 @@ private extension CGPriceListView {
             Button(action: viewModel.retry) {
                 Text(.buttonRetry)
             }
-        }
-    }
-
-    func handleScenePhase(_ phase: ScenePhase) {
-        if phase == .active {
-            viewModel.startLiveUpdates()
-        } else {
-            viewModel.stopLiveUpdates()
         }
     }
 }

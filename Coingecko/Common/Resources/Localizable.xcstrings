@@ -172,12 +172,13 @@
       }
     },
     "priceListSectionHeader" : {
+      "comment" : "Price list header. Arguments are the number of days and a currency code, for example 14 and EUR.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Last 14 days, EUR"
+            "value" : "Last %1$lld days, %2$@"
           }
         }
       }

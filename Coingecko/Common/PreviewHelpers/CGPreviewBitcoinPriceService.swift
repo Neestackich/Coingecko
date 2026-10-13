@@ -21,6 +21,7 @@ nonisolated final class CGPreviewBitcoinPriceService: CGBitcoinPriceServiceType 
     }
 
     private let behavior: Behavior
+    private let dateProvider: CGDateProviderType
 
     private struct Constants {
         static let basePrice = 96412.08
@@ -35,8 +36,9 @@ nonisolated final class CGPreviewBitcoinPriceService: CGBitcoinPriceServiceType 
 
     // MARK: Initialization
 
-    init(behavior: Behavior) {
+    init(behavior: Behavior, dateProvider: CGDateProviderType = CGDateProvider()) {
         self.behavior = behavior
+        self.dateProvider = dateProvider
     }
 
 }
@@ -45,17 +47,17 @@ nonisolated final class CGPreviewBitcoinPriceService: CGBitcoinPriceServiceType 
 
 nonisolated extension CGPreviewBitcoinPriceService {
 
-    func fetchDailyPrices(days: Int, currency: CGCurrency) async throws -> [CGDailyPrice] {
+    func fetchDailyPricesList(days: Int, currency: CGCurrency) async throws -> [CGDailyPrice] {
         try await simulateBehavior()
 
         guard behavior == .success else {
             return []
         }
 
-        let today = Calendar.utc.startOfDay(for: .now)
+        let today = dateProvider.today
 
         return (0..<days).compactMap { offset in
-            guard let date = Calendar.utc.date(byAdding: .day, value: -offset, to: today) else {
+            guard let date = dateProvider.calendar.date(byAdding: .day, value: -offset, to: today) else {
                 return nil
             }
 
@@ -63,23 +65,23 @@ nonisolated extension CGPreviewBitcoinPriceService {
                 date: date,
                 price: Constants.basePrice - Double(offset) * Constants.dailyPriceStep,
                 currency: currency,
-                updatedAt: offset == 0 ? .now : date
+                updatedAt: offset == 0 ? dateProvider.now : date
             )
         }
     }
 
-    func fetchCurrentPrice(currency: CGCurrency) async throws -> CGDailyPrice {
+    func fetchCurrentDayPrice(currency: CGCurrency) async throws -> CGDailyPrice {
         try await simulateBehavior()
 
         return CGDailyPrice(
-            date: Calendar.utc.startOfDay(for: .now),
+            date: dateProvider.today,
             price: Constants.pricesByCurrency[currency] ?? Constants.basePrice,
             currency: currency,
-            updatedAt: .now
+            updatedAt: dateProvider.now
         )
     }
 
-    func fetchPrices(on date: Date, currencies: [CGCurrency]) async throws -> [CGCurrency: Double] {
+    func fetchMultipleCurrenciesPrices(on date: Date, currencies: [CGCurrency]) async throws -> [CGCurrency: Double] {
         try await simulateBehavior()
 
         return Constants.pricesByCurrency.filter { currencies.contains($0.key) }

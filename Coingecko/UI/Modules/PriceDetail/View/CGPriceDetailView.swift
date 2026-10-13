@@ -10,6 +10,10 @@ import SwiftUI
 struct CGPriceDetailView: View {
     @State private var viewModel: CGPriceDetailViewModel
 
+    private struct Constants {
+        static let rowIdentifierPrefix = "priceDetailRow_"
+    }
+
     init(viewModel: CGPriceDetailViewModel) {
         _viewModel = State(initialValue: viewModel)
     }
@@ -19,10 +23,10 @@ struct CGPriceDetailView: View {
             .navigationTitle(viewModel.getTitle())
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
-                viewModel.startLoading()
+                viewModel.loadData()
             }
             .onDisappear {
-                viewModel.stopLoading()
+                viewModel.cancelDataLoading()
             }
     }
 }
@@ -36,7 +40,7 @@ private extension CGPriceDetailView {
         case .loading, .loaded, .empty:
             pricesList
         case .failed(let message):
-            CGErrorStateView(message: message, retry: viewModel.retry)
+            CGErrorStateView(message: message, retry: viewModel.retryLoading)
         }
     }
 
@@ -45,6 +49,7 @@ private extension CGPriceDetailView {
             Section {
                 ForEach(viewModel.rows) { row in
                     CGPriceDetailRowView(data: row)
+                        .accessibilityIdentifier(Constants.rowIdentifierPrefix + row.code)
                 }
             } header: {
                 Text(.priceDetailSectionHeader)

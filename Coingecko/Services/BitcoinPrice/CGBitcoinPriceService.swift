@@ -9,8 +9,6 @@ import Foundation
 
 nonisolated final class CGBitcoinPriceService: CGBitcoinPriceServiceType {
 
-    // MARK: Properties
-
     private let apiClient: CGAPIClientType
     private let dateProvider: CGDateProviderType
     private let cache: CGCacheType
@@ -20,8 +18,6 @@ nonisolated final class CGBitcoinPriceService: CGBitcoinPriceServiceType {
         static let historyCacheKeyPrefix = "coinHistory"
         static let lastUpdatedAtKey = "last_updated_at"
     }
-
-    // MARK: Initialization
 
     init(
         apiClient: CGAPIClientType,
@@ -39,7 +35,7 @@ nonisolated final class CGBitcoinPriceService: CGBitcoinPriceServiceType {
 
 nonisolated extension CGBitcoinPriceService {
 
-    func fetchDailyPrices(days: Int, currency: CGCurrency) async throws -> [CGDailyPrice] {
+    func fetchDailyPricesList(days: Int, currency: CGCurrency) async throws -> [CGDailyPrice] {
         guard days > 0 else {
             return []
         }
@@ -51,8 +47,9 @@ nonisolated extension CGBitcoinPriceService {
         return makeDailyPrices(from: response.prices, days: days, currency: currency)
     }
 
-    func fetchCurrentPrice(currency: CGCurrency) async throws -> CGDailyPrice {
+    func fetchCurrentDayPrice(currency: CGCurrency) async throws -> CGDailyPrice {
         let endpoint = CGEndpoint.simplePrice(coinId: Constants.coinId, currencies: [currency])
+
         let data = try await apiClient.sendRequest(endpoint)
         let response = try decode(CGSimplePriceResponse.self, from: data)
 
@@ -76,7 +73,7 @@ nonisolated extension CGBitcoinPriceService {
         )
     }
 
-    func fetchPrices(on date: Date, currencies: [CGCurrency]) async throws -> [CGCurrency: Double] {
+    func fetchMultipleCurrenciesPrices(on date: Date, currencies: [CGCurrency]) async throws -> [CGCurrency: Double] {
         guard !currencies.isEmpty else {
             return [:]
         }
@@ -85,12 +82,9 @@ nonisolated extension CGBitcoinPriceService {
 
         if dateProvider.isDateSameAsToday(day) {
             return try await fetchCurrentPrices(currencies: currencies)
-        }
-
-        let historicalPrices = try await fetchHistoricalPrices(on: day)
-
-        return try makePrices(for: currencies) { currency in
-            historicalPrices[currency]
+        } else {
+            let historicalPrices = try await fetchHistoricalPrices(on: day)
+            return try makePrices(for: currencies, from: historicalPrices)
         }
     }
 
@@ -105,9 +99,10 @@ private nonisolated extension CGBitcoinPriceService {
         let data = try await apiClient.sendRequest(endpoint)
         let response = try decode(CGSimplePriceResponse.self, from: data)
 
-        return try makePrices(for: currencies) { currency in
-            response.prices[Constants.coinId]?[currency.rawValue]
-        }
+        let coinPrices = response.prices[Constants.coinId] ?? [:]
+        let currentPrices = makeCurrencyPrices(from: coinPrices)
+
+        return try makePrices(for: currencies, from: currentPrices)
     }
 
     func fetchHistoricalPrices(on day: Date) async throws -> [CGCurrency: Double] {
@@ -115,24 +110,22 @@ private nonisolated extension CGBitcoinPriceService {
 
         if let cachedPrices = cache.value(forKey: cacheKey, as: [CGCurrency: Double].self) {
             return cachedPrices
+        } else {
+
+            let endpoint = CGEndpoint.coinHistory(coinId: Constants.coinId, date: day)
+
+            let data = try await apiClient.sendRequest(endpoint)
+            let response = try decode(CGCoinHistoryResponse.self, from: data)
+
+            let currentPrice = response.marketData?.currentPrice ?? [:]
+            let prices = makeCurrencyPrices(from: currentPrice)
+
+            if prices.count == CGCurrency.allCases.count {
+                cache.store(prices, forKey: cacheKey)
+            }
+
+            return prices
         }
-
-        let endpoint = CGEndpoint.coinHistory(coinId: Constants.coinId, date: day)
-        let data = try await apiClient.sendRequest(endpoint)
-        let response = try decode(CGCoinHistoryResponse.self, from: data)
-
-        let currentPrice = response.marketData?.currentPrice ?? [:]
-
-        var prices: [CGCurrency: Double] = [:]
-        prices.reserveCapacity(CGCurrency.allCases.count)
-
-        for currency in CGCurrency.allCases {
-            prices[currency] = currentPrice[currency.rawValue]
-        }
-
-        cache.store(prices, forKey: cacheKey)
-
-        return prices
     }
 
     func makeDailyPrices(
@@ -164,7 +157,8 @@ private nonisolated extension CGBitcoinPriceService {
                 continue
             }
 
-            if let existingPoint = latestPointByDay[day], existingPoint.timestamp > timestamp {
+            if let existingPoint = latestPointByDay[day],
+               existingPoint.timestamp > timestamp {
                 continue
             }
 
@@ -184,16 +178,28 @@ private nonisolated extension CGBitcoinPriceService {
 
     func makePrices(
         for currencies: [CGCurrency],
-        price: (CGCurrency) -> Double?
+        from availablePrices: [CGCurrency: Double]
     ) throws -> [CGCurrency: Double] {
         var prices: [CGCurrency: Double] = [:]
         prices.reserveCapacity(currencies.count)
 
         for currency in currencies {
-            guard let value = price(currency) else {
+            guard let price = availablePrices[currency] else {
                 throw CGBitcoinPriceServiceError.missingPrice(currency)
             }
-            prices[currency] = value
+
+            prices[currency] = price
+        }
+
+        return prices
+    }
+
+    func makeCurrencyPrices(from pricesByCode: [String: Double]) -> [CGCurrency: Double] {
+        var prices: [CGCurrency: Double] = [:]
+        prices.reserveCapacity(CGCurrency.allCases.count)
+
+        for currency in CGCurrency.allCases {
+            prices[currency] = pricesByCode[currency.rawValue]
         }
 
         return prices

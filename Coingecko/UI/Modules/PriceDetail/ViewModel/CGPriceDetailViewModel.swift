@@ -16,7 +16,7 @@ final class CGPriceDetailViewModel {
     private(set) var state: CGViewState = .loading
     private(set) var rows = CGPriceDetailRowBindableData.placeholders(for: Constants.currencies)
 
-    @ObservationIgnored private var loadTask: Task<Void, Never>?
+    @ObservationIgnored private(set) var loadTask: Task<Void, Never>?
 
     private let date: Date
     private let priceService: CGBitcoinPriceServiceType
@@ -44,7 +44,7 @@ final class CGPriceDetailViewModel {
 
 extension CGPriceDetailViewModel {
 
-    func startLoading() {
+    func loadData() {
         loadTask?.cancel()
 
         loadTask = Task { [weak self] in
@@ -52,13 +52,13 @@ extension CGPriceDetailViewModel {
         }
     }
 
-    func stopLoading() {
+    func cancelDataLoading() {
         loadTask?.cancel()
         loadTask = nil
     }
 
-    func retry() {
-        startLoading()
+    func retryLoading() {
+        loadData()
     }
 
     func getTitle() -> String {
@@ -86,7 +86,7 @@ private extension CGPriceDetailViewModel {
         state = .loading
 
         do {
-            let prices = try await priceService.fetchPrices(on: date, currencies: Constants.currencies)
+            let prices = try await priceService.fetchMultipleCurrenciesPrices(on: date, currencies: Constants.currencies)
 
             try Task.checkCancellation()
 
