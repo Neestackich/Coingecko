@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-struct CGPriceListView {
+struct CGPriceListView: View {
     @State private var viewModel: CGPriceListViewModel
     @Environment(\.scenePhase) private var scenePhase
 
@@ -19,13 +19,14 @@ struct CGPriceListView {
     init(viewModel: CGPriceListViewModel) {
         _viewModel = State(initialValue: viewModel)
     }
-}
 
-extension CGPriceListView: View {
     var body: some View {
         NavigationStack {
             content
                 .navigationTitle(Text(.priceListTitle))
+                .navigationDestination(for: Date.self) { date in
+                    CGPriceDetailView(viewModel: viewModel.makeDetailViewModel(for: date))
+                }
         }
         .onChange(of: scenePhase, initial: true) { _, newPhase in
             handleScenePhase(newPhase)
@@ -52,7 +53,9 @@ private extension CGPriceListView {
         List {
             Section {
                 ForEach(viewModel.rows) { row in
-                    CGPriceRowView(data: row)
+                    NavigationLink(value: row.id) {
+                        CGPriceRowView(data: row)
+                    }
                 }
             } header: {
                 Text(.priceListSectionHeader)

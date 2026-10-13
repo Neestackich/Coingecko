@@ -30,11 +30,13 @@ nonisolated struct CGEndpoint: Equatable, Sendable {
             static let ids = "ids"
             static let date = "date"
             static let localization = "localization"
+            static let includeLastUpdatedAt = "include_last_updated_at"
         }
 
         struct Value {
             static let dailyInterval = "daily"
             static let localizationDisabled = "false"
+            static let enabled = "true"
             static let listSeparator = ","
         }
     }
@@ -79,7 +81,8 @@ nonisolated extension CGEndpoint {
             path: Constants.Path.simplePrice,
             queryItems: [
                 URLQueryItem(name: Constants.Query.ids, value: coinId),
-                URLQueryItem(name: Constants.Query.vsCurrencies, value: currencies)
+                URLQueryItem(name: Constants.Query.vsCurrencies, value: currencies),
+                URLQueryItem(name: Constants.Query.includeLastUpdatedAt, value: Constants.Value.enabled)
             ]
         )
     }

@@ -18,6 +18,7 @@ nonisolated final class CGBitcoinPriceService: CGBitcoinPriceServiceType {
     private struct Constants {
         static let coinId = "bitcoin"
         static let historyCacheKeyPrefix = "coinHistory"
+        static let lastUpdatedAtKey = "last_updated_at"
     }
 
     // MARK: Initialization
@@ -48,6 +49,31 @@ nonisolated extension CGBitcoinPriceService {
         let response = try decode(CGMarketChartResponse.self, from: data)
 
         return makeDailyPrices(from: response.prices, days: days, currency: currency)
+    }
+
+    func fetchCurrentPrice(currency: CGCurrency) async throws -> CGDailyPrice {
+        let endpoint = CGEndpoint.simplePrice(coinId: Constants.coinId, currencies: [currency])
+        let data = try await apiClient.sendRequest(endpoint)
+        let response = try decode(CGSimplePriceResponse.self, from: data)
+
+        let coinPrices = response.prices[Constants.coinId]
+
+        guard let price = coinPrices?[currency.rawValue] else {
+            throw CGBitcoinPriceServiceError.missingPrice(currency)
+        }
+
+        guard let lastUpdatedAt = coinPrices?[Constants.lastUpdatedAtKey] else {
+            throw CGBitcoinPriceServiceError.decodingError
+        }
+
+        let updatedAt = Date(timeIntervalSince1970: lastUpdatedAt)
+
+        return CGDailyPrice(
+            date: dateProvider.calendar.startOfDay(for: updatedAt),
+            price: price,
+            currency: currency,
+            updatedAt: updatedAt
+        )
     }
 
     func fetchPrices(on date: Date, currencies: [CGCurrency]) async throws -> [CGCurrency: Double] {
@@ -127,7 +153,7 @@ private nonisolated extension CGBitcoinPriceService {
         latestPointByDay.reserveCapacity(min(days, points.count))
 
         for point in points {
-            guard point.count == 2 else {
+            guard point.count == 2, point[1] > 0 else {
                 continue
             }
 
@@ -146,7 +172,7 @@ private nonisolated extension CGBitcoinPriceService {
         }
 
         var dailyPrices = latestPointByDay.map {
-            return CGDailyPrice(date: $0.key, price: $0.value.price, currency: currency)
+            return CGDailyPrice(date: $0.key, price: $0.value.price, currency: currency, updatedAt: $0.value.timestamp)
         }
 
         dailyPrices.sort {

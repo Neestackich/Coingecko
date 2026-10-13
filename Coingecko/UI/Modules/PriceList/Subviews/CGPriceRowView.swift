@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-struct CGPriceRowView {
+struct CGPriceRowView: View {
     private let data: CGPriceRowBindableData
 
     private struct Constants {
@@ -19,17 +19,27 @@ struct CGPriceRowView {
     init(data: CGPriceRowBindableData) {
         self.data = data
     }
-}
 
-// MARK: - View
-
-extension CGPriceRowView: View {
     var body: some View {
         HStack {
-            Text(data.date)
+            VStack(alignment: .leading) {
+                HStack {
+                    Text(data.date)
 
-            if data.isLive {
-                liveBadge
+                    if data.isLive {
+                        makeBadge(text: Text(.priceListLiveBadge), color: .green)
+                    }
+
+                    if data.isStale {
+                        makeBadge(text: Text(.priceListStaleBadge), color: .orange)
+                    }
+                }
+
+                if let updatedTime = data.updatedTime {
+                    Text(updatedTime)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Spacer()
@@ -43,13 +53,13 @@ extension CGPriceRowView: View {
 // MARK: - Private
 
 private extension CGPriceRowView {
-    var liveBadge: some View {
-        Text(.priceListLiveBadge)
+    func makeBadge(text: Text, color: Color) -> some View {
+        text
             .font(.caption.bold())
-            .foregroundStyle(.green)
+            .foregroundStyle(color)
             .padding(.horizontal, Constants.badgeHorizontalPadding)
             .padding(.vertical, Constants.badgeVerticalPadding)
-            .background(.green.opacity(Constants.badgeBackgroundOpacity), in: Capsule())
+            .background(color.opacity(Constants.badgeBackgroundOpacity), in: Capsule())
     }
 
     var price: some View {
@@ -62,7 +72,8 @@ private extension CGPriceRowView {
 
 #Preview {
     List {
-        CGPriceRowView(data: CGPriceRowBindableData(id: .now, date: "Tue, 13 Oct", price: "€96,412.08", isLive: true))
-        CGPriceRowView(data: CGPriceRowBindableData(id: .distantPast, date: "Mon, 12 Oct", price: "€95,870.51", isLive: false))
+        CGPriceRowView(data: CGPriceRowBindableData(id: .now, date: "Tue, 13 Oct", price: "€96,412.08", isLive: true, isStale: false, updatedTime: "as of 22:29"))
+        CGPriceRowView(data: CGPriceRowBindableData(id: .distantFuture, date: "Tue, 13 Oct", price: "€96,412.08", isLive: false, isStale: true, updatedTime: "as of 02:00"))
+        CGPriceRowView(data: CGPriceRowBindableData(id: .distantPast, date: "Mon, 12 Oct", price: "€95,870.51", isLive: false, isStale: false, updatedTime: nil))
     }
 }

@@ -68,6 +68,40 @@
         }
       }
     },
+    "priceDetailFooterHistorical" : {
+      "comment" : "UTC is the time zone name; keep it as is.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Price at 00:00 UTC on this day."
+          }
+        }
+      }
+    },
+    "priceDetailFooterToday" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Current market price."
+          }
+        }
+      }
+    },
+    "priceDetailSectionHeader" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitcoin price"
+          }
+        }
+      }
+    },
     "priceListEmptyDescription" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -114,6 +148,18 @@
         }
       }
     },
+    "priceListPriceTime" : {
+      "comment" : "Time of today's price, shown next to the badge. Argument is a time, for example 19:31.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "as of %@"
+          }
+        }
+      }
+    },
     "priceListRefreshFailed" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -132,6 +178,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Last 14 days, EUR"
+          }
+        }
+      }
+    },
+    "priceListStaleBadge" : {
+      "comment" : "Badge on today's row when the latest price update failed.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stale(!)"
           }
         }
       }

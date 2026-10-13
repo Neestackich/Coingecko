@@ -14,6 +14,8 @@ nonisolated struct CGPriceRowBindableData: Identifiable,
     let date: String
     let price: String
     let isLive: Bool
+    let isStale: Bool
+    let updatedTime: String?
 }
 
 // MARK: - Placeholder
@@ -31,7 +33,9 @@ nonisolated extension CGPriceRowBindableData {
                 id: Date(timeIntervalSince1970: TimeInterval(index)),
                 date: Constants.placeholderDate,
                 price: Constants.placeholderPrice,
-                isLive: false
+                isLive: false,
+                isStale: false,
+                updatedTime: nil
             )
         }
     }

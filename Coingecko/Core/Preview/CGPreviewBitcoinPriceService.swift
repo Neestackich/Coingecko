@@ -62,9 +62,21 @@ nonisolated extension CGPreviewBitcoinPriceService {
             return CGDailyPrice(
                 date: date,
                 price: Constants.basePrice - Double(offset) * Constants.dailyPriceStep,
-                currency: currency
+                currency: currency,
+                updatedAt: offset == 0 ? .now : date
             )
         }
+    }
+
+    func fetchCurrentPrice(currency: CGCurrency) async throws -> CGDailyPrice {
+        try await simulateBehavior()
+
+        return CGDailyPrice(
+            date: Calendar.utc.startOfDay(for: .now),
+            price: Constants.pricesByCurrency[currency] ?? Constants.basePrice,
+            currency: currency,
+            updatedAt: .now
+        )
     }
 
     func fetchPrices(on date: Date, currencies: [CGCurrency]) async throws -> [CGCurrency: Double] {

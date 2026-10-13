@@ -28,6 +28,7 @@ final class CGPriceListViewModel {
         static let days = 14
         static let currency: CGCurrency = .eur
         static let refreshInterval: Duration = .seconds(60)
+        static let maxLivePriceAge: TimeInterval = 5 * 60
     }
 
     // MARK: Initialization
@@ -80,6 +81,10 @@ extension CGPriceListViewModel {
         startLiveUpdates()
     }
 
+    func makeDetailViewModel(for date: Date) -> CGPriceDetailViewModel {
+        return CGPriceDetailViewModel(date: date, priceService: priceService, dateProvider: dateProvider)
+    }
+
 }
 
 // MARK: - Private
@@ -107,16 +112,16 @@ private extension CGPriceListViewModel {
 
     func refreshTodaysPrice(on day: Date) async {
         do {
-            let prices = try await priceService.fetchPrices(on: day, currencies: [Constants.currency])
+            let todaysPrice = try await priceService.fetchCurrentPrice(currency: Constants.currency)
 
             try Task.checkCancellation()
 
-            guard let price = prices[Constants.currency],
+            guard todaysPrice.date == day,
                   dailyPrices.first?.date == day else {
                 return
             }
 
-            dailyPrices[0] = CGDailyPrice(date: day, price: price, currency: Constants.currency)
+            dailyPrices[0] = todaysPrice
 
             showPrices()
         } catch {
@@ -125,13 +130,18 @@ private extension CGPriceListViewModel {
     }
 
     func showPrices() {
-        rows = dailyPrices.map { dailyPrice in
-            return makeRow(from: dailyPrice)
-        }
+        isRefreshFailing = false
+
+        updateRows()
 
         state = rows.isEmpty ? .empty : .loaded
         lastUpdated = String(localized: .priceListLastUpdated(dateProvider.now.formatted(date: .omitted, time: .shortened)))
-        isRefreshFailing = false
+    }
+
+    func updateRows() {
+        rows = dailyPrices.map { dailyPrice in
+            return makeRow(from: dailyPrice)
+        }
     }
 
     func handleError(_ error: Error) {
@@ -142,6 +152,7 @@ private extension CGPriceListViewModel {
 
         guard dailyPrices.isEmpty else {
             isRefreshFailing = true
+            updateRows()
             return
         }
 
@@ -149,6 +160,17 @@ private extension CGPriceListViewModel {
     }
 
     func makeRow(from dailyPrice: CGDailyPrice) -> CGPriceRowBindableData {
+        let isToday = dateProvider.isDateSameAsToday(dailyPrice.date)
+        let priceAge = dateProvider.now.timeIntervalSince(dailyPrice.updatedAt)
+        let isStale = isToday && (isRefreshFailing || priceAge > Constants.maxLivePriceAge)
+
+        var updatedTime: String?
+
+        if isToday {
+            let time = dailyPrice.updatedAt.formatted(date: .omitted, time: .shortened)
+            updatedTime = String(localized: .priceListPriceTime(time))
+        }
+
         let dateStyle = Date.FormatStyle(timeZone: dateProvider.calendar.timeZone)
             .weekday(.abbreviated)
             .day()
@@ -158,7 +180,9 @@ private extension CGPriceListViewModel {
             id: dailyPrice.date,
             date: dailyPrice.date.formatted(dateStyle),
             price: dailyPrice.price.formatted(.currency(code: dailyPrice.currency.code)),
-            isLive: dateProvider.isDateSameAsToday(dailyPrice.date)
+            isLive: isToday && !isStale,
+            isStale: isStale,
+            updatedTime: updatedTime
         )
     }
 
