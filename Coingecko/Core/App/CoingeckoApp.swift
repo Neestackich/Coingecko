@@ -9,9 +9,17 @@ import SwiftUI
 
 @main
 struct CoingeckoApp: App {
+
+    // MARK: Properties
+
+    private let dependencies = CGAppDependencies()
+
+    // MARK: Body
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            CGPriceListView(viewModel: dependencies.makePriceListViewModel())
         }
     }
+
 }
