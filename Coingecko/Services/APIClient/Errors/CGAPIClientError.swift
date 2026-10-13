@@ -11,7 +11,6 @@ nonisolated enum CGAPIClientError: Error, Equatable {
     case urlCreateError
     case invalidResponse
     case httpStatus(Int)
-    case decodingError
     case transportError(URLError.Code)
 }
 

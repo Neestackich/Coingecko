@@ -44,7 +44,8 @@ nonisolated extension CGBitcoinPriceService {
         }
 
         let endpoint = CGEndpoint.marketChart(coinId: Constants.coinId, currency: currency, days: days)
-        let response = try await apiClient.sendRequest(endpoint, as: CGMarketChartResponse.self)
+        let data = try await apiClient.sendRequest(endpoint)
+        let response = try decode(CGMarketChartResponse.self, from: data)
 
         return makeDailyPrices(from: response.prices, days: days, currency: currency)
     }
@@ -75,7 +76,8 @@ private nonisolated extension CGBitcoinPriceService {
 
     func fetchCurrentPrices(currencies: [CGCurrency]) async throws -> [CGCurrency: Double] {
         let endpoint = CGEndpoint.simplePrice(coinId: Constants.coinId, currencies: currencies)
-        let response = try await apiClient.sendRequest(endpoint, as: CGSimplePriceResponse.self)
+        let data = try await apiClient.sendRequest(endpoint)
+        let response = try decode(CGSimplePriceResponse.self, from: data)
 
         return try makePrices(for: currencies) { currency in
             response.prices[Constants.coinId]?[currency.rawValue]
@@ -90,7 +92,8 @@ private nonisolated extension CGBitcoinPriceService {
         }
 
         let endpoint = CGEndpoint.coinHistory(coinId: Constants.coinId, date: day)
-        let response = try await apiClient.sendRequest(endpoint, as: CGCoinHistoryResponse.self)
+        let data = try await apiClient.sendRequest(endpoint)
+        let response = try decode(CGCoinHistoryResponse.self, from: data)
 
         let currentPrice = response.marketData?.currentPrice ?? [:]
 
@@ -168,6 +171,14 @@ private nonisolated extension CGBitcoinPriceService {
         }
 
         return prices
+    }
+
+    func decode<Response: Decodable>(_ type: Response.Type, from data: Data) throws -> Response {
+        do {
+            return try JSONDecoder().decode(type, from: data)
+        } catch {
+            throw CGBitcoinPriceServiceError.decodingError
+        }
     }
 
 }

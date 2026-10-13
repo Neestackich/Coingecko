@@ -8,6 +8,7 @@
 import Foundation
 
 nonisolated enum CGBitcoinPriceServiceError: Error, Equatable {
+    case decodingError
     case missingPrice(CGCurrency)
 }
 
@@ -15,6 +16,8 @@ nonisolated extension CGBitcoinPriceServiceError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
+        case .decodingError:
+            return String(localized: .errorGeneric)
         case .missingPrice(let currency):
             return String(localized: .errorMissingPrice(currency.code))
         }
