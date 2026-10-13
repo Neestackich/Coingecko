@@ -1,0 +1,12 @@
+//
+//  Base.xcconfig
+//  Coingecko
+//
+//  Created by Vittcal Neestackich on 13.10.26.
+//
+
+// Optional CoinGecko Demo API key. Override it in the gitignored Secrets.xcconfig,
+// see Secrets.xcconfig.example. When empty, requests are sent without a key.
+COINGECKO_API_KEY =
+
+#include? "Secrets.xcconfig"
