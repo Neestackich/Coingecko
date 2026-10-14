@@ -16,13 +16,13 @@ enum CGFixtures {
     static let days = 14
     static let livePrice = 74504.70
 
-    static let historicalPrices: [CGCurrency: Double] = [
+    static let historicalPrices: [CGCurrencyType: Double] = [
         .eur: 74693.77,
         .usd: 86980.12,
         .gbp: 64870.45
     ]
 
-    static let currentPrices: [CGCurrency: Double] = [
+    static let currentPrices: [CGCurrencyType: Double] = [
         .eur: 74504.70,
         .usd: 86760.31,
         .gbp: 64705.92
@@ -74,7 +74,7 @@ extension CGFixtures {
         return makeJSON(["prices": points])
     }
 
-    static func simplePriceData(prices: [CGCurrency: Double], lastUpdatedAt: Date? = now) -> Data {
+    static func simplePriceData(prices: [CGCurrencyType: Double], lastUpdatedAt: Date? = now) -> Data {
         var bitcoin: [String: Double] = [:]
 
         for (currency, price) in prices {
@@ -88,7 +88,7 @@ extension CGFixtures {
         return makeJSON(["bitcoin": bitcoin])
     }
 
-    static func coinHistoryData(prices: [CGCurrency: Double]?) -> Data {
+    static func coinHistoryData(prices: [CGCurrencyType: Double]?) -> Data {
         guard let prices else {
             return makeJSON(["id": "bitcoin"])
         }

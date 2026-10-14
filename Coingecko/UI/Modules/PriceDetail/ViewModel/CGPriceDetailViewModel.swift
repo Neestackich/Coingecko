@@ -23,7 +23,7 @@ final class CGPriceDetailViewModel {
     private let dateProvider: CGDateProviderType
 
     private struct Constants {
-        static let currencies: [CGCurrency] = [.eur, .usd, .gbp]
+        static let currencies: [CGCurrencyType] = [.eur, .usd, .gbp]
     }
 
     // MARK: Initialization
@@ -113,7 +113,7 @@ private extension CGPriceDetailViewModel {
         state = .failed(error.localizedDescription)
     }
 
-    func makeRow(currency: CGCurrency, price: Double) -> CGPriceDetailRowBindableData {
+    func makeRow(currency: CGCurrencyType, price: Double) -> CGPriceDetailRowBindableData {
         return CGPriceDetailRowBindableData(
             id: currency,
             code: currency.code,

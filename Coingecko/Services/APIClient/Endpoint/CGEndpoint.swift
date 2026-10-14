@@ -61,7 +61,7 @@ nonisolated extension CGEndpoint {
 
     static func marketChart(
         coinId: String,
-        currency: CGCurrency,
+        currency: CGCurrencyType,
         days: Int
     ) -> CGEndpoint {
         return .init(
@@ -74,7 +74,7 @@ nonisolated extension CGEndpoint {
         )
     }
 
-    static func simplePrice(coinId: String, currencies: [CGCurrency]) -> CGEndpoint {
+    static func simplePrice(coinId: String, currencies: [CGCurrencyType]) -> CGEndpoint {
         let currencies = currencies.map(\.rawValue).joined(separator: Constants.Value.listSeparator)
 
         return .init(

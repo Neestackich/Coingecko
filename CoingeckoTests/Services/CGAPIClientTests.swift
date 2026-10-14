@@ -16,14 +16,14 @@ final class CGAPIClientTests: XCTestCase {
         static let responseData = Data("{}".utf8)
     }
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         CGURLProtocolStub.reset()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         CGURLProtocolStub.reset()
-        super.tearDown()
+        try await super.tearDown()
     }
 
     private func makeSUT(config: CGAPIConfigMock = CGAPIConfigMock()) -> CGAPIClient {

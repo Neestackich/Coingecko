@@ -68,6 +68,28 @@
         }
       }
     },
+    "priceDetailEmptyDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitcoin prices for this day aren't available."
+          }
+        }
+      }
+    },
+    "priceDetailEmptyTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No prices for this day"
+          }
+        }
+      }
+    },
     "priceDetailFooterHistorical" : {
       "comment" : "UTC is the time zone name; keep it as is.",
       "extractionState" : "manual",

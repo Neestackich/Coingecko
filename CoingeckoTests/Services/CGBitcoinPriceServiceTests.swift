@@ -20,16 +20,16 @@ final class CGBitcoinPriceServiceTests: XCTestCase {
     private var apiClient: CGAPIClientMock!
     private var cache: CGCacheMock!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         apiClient = CGAPIClientMock()
         cache = CGCacheMock()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         apiClient = nil
         cache = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     private func makeSUT() -> CGBitcoinPriceService {
@@ -42,7 +42,7 @@ final class CGBitcoinPriceServiceTests: XCTestCase {
 
 }
 
-// MARK: - fetchDailyPrices
+// MARK: - fetchDailyPricesList
 
 extension CGBitcoinPriceServiceTests {
 
@@ -150,6 +150,50 @@ extension CGBitcoinPriceServiceTests {
         XCTAssertEqual(prices.first?.updatedAt, CGFixtures.today)
     }
 
+    func test_OnFetchDailyPrices_WhenLatestPointIsInFuture_ShouldKeepEarlierValidPoint() async throws {
+        let sut = makeSUT()
+        let future = CGFixtures.now.addingTimeInterval(2 * 60 * 60).millisecondsSince1970
+        stubMarketChart(points: [
+            [CGFixtures.now.millisecondsSince1970, CGFixtures.livePrice],
+            [future, 1]
+        ])
+
+        let prices = try await sut.fetchDailyPricesList(days: 14, currency: .eur)
+
+        XCTAssertEqual(prices.first?.price, CGFixtures.livePrice)
+        XCTAssertEqual(prices.first?.updatedAt, CGFixtures.now)
+    }
+
+    func test_OnFetchDailyPrices_WhenLatestPointIsSlightlyAhead_ShouldAcceptIt() async throws {
+        let sut = makeSUT()
+        let slightlyAhead = CGFixtures.now.addingTimeInterval(30)
+        stubMarketChart(points: [[slightlyAhead.millisecondsSince1970, CGFixtures.livePrice]])
+
+        let prices = try await sut.fetchDailyPricesList(days: 14, currency: .eur)
+
+        XCTAssertEqual(prices.first?.updatedAt, slightlyAhead)
+    }
+
+    func test_OnFetchDailyPrices_WhenTimestampIsNotPositive_ShouldSkipIt() async throws {
+        let sut = makeSUT()
+        stubMarketChart(points: [[0, 1], [-1000, 2], [CGFixtures.now.millisecondsSince1970, 100]])
+
+        let prices = try await sut.fetchDailyPricesList(days: 14, currency: .eur)
+
+        XCTAssertEqual(prices.map(\.price), [100])
+    }
+
+    func test_OnFetchDailyPrices_WhenPointsAreAroundMidnight_ShouldGroupThemByUTCDay() async throws {
+        let sut = makeSUT()
+        let lastSecondOfYesterday = CGFixtures.today.addingTimeInterval(-1).millisecondsSince1970
+        stubMarketChart(points: [[lastSecondOfYesterday, 1], [CGFixtures.today.millisecondsSince1970, 2]])
+
+        let prices = try await sut.fetchDailyPricesList(days: 14, currency: .eur)
+
+        XCTAssertEqual(prices.map(\.date), [CGFixtures.today, CGFixtures.yesterday])
+        XCTAssertEqual(prices.map(\.price), [2, 1])
+    }
+
     func test_OnFetchDailyPrices_WhenResponseIsInvalid_ShouldThrowDecodingError() async {
         let sut = makeSUT()
         apiClient.dataByPath[Constants.marketChartPath] = CGFixtures.makeJSON(["prices": [[1, NSNull()]]])
@@ -185,7 +229,7 @@ extension CGBitcoinPriceServiceTests {
 
 }
 
-// MARK: - fetchCurrentPrice
+// MARK: - fetchCurrentDayPrice
 
 extension CGBitcoinPriceServiceTests {
 
@@ -217,11 +261,70 @@ extension CGBitcoinPriceServiceTests {
         let sut = makeSUT()
         apiClient.dataByPath[Constants.simplePricePath] = CGFixtures.simplePriceData(prices: [.eur: 1], lastUpdatedAt: nil)
 
+        await assertFetchCurrentPriceThrows(.decodingError, sut: sut)
+    }
+
+    func test_OnFetchCurrentPrice_WhenPriceIsZero_ShouldThrowMissingPrice() async {
+        let sut = makeSUT()
+        apiClient.dataByPath[Constants.simplePricePath] = CGFixtures.simplePriceData(prices: [.eur: 0])
+
+        await assertFetchCurrentPriceThrows(.missingPrice(.eur), sut: sut)
+    }
+
+    func test_OnFetchCurrentPrice_WhenPriceIsNegative_ShouldThrowMissingPrice() async {
+        let sut = makeSUT()
+        apiClient.dataByPath[Constants.simplePricePath] = CGFixtures.simplePriceData(prices: [.eur: -1])
+
+        await assertFetchCurrentPriceThrows(.missingPrice(.eur), sut: sut)
+    }
+
+    func test_OnFetchCurrentPrice_WhenUpdateTimeIsNotPositive_ShouldThrowDecodingError() async {
+        let sut = makeSUT()
+        let epoch = Date(timeIntervalSince1970: 0)
+        apiClient.dataByPath[Constants.simplePricePath] = CGFixtures.simplePriceData(prices: [.eur: 1], lastUpdatedAt: epoch)
+
+        await assertFetchCurrentPriceThrows(.decodingError, sut: sut)
+    }
+
+    func test_OnFetchCurrentPrice_WhenUpdateTimeIsInFuture_ShouldThrowDecodingError() async {
+        let sut = makeSUT()
+        let future = CGFixtures.now.addingTimeInterval(10 * 60)
+        apiClient.dataByPath[Constants.simplePricePath] = CGFixtures.simplePriceData(prices: [.eur: 1], lastUpdatedAt: future)
+
+        await assertFetchCurrentPriceThrows(.decodingError, sut: sut)
+    }
+
+    func test_OnFetchCurrentPrice_WhenUpdateTimeIsSlightlyAhead_ShouldAcceptIt() async throws {
+        let sut = makeSUT()
+        let slightlyAhead = CGFixtures.now.addingTimeInterval(30)
+        apiClient.dataByPath[Constants.simplePricePath] = CGFixtures.simplePriceData(prices: [.eur: 1], lastUpdatedAt: slightlyAhead)
+
+        let price = try await sut.fetchCurrentDayPrice(currency: .eur)
+
+        XCTAssertEqual(price.updatedAt, slightlyAhead)
+    }
+
+    func test_OnFetchCurrentPrice_WhenUpdateTimeIsFromYesterday_ShouldDateItYesterday() async throws {
+        let sut = makeSUT()
+        let lastSecondOfYesterday = CGFixtures.today.addingTimeInterval(-1)
+        apiClient.dataByPath[Constants.simplePricePath] = CGFixtures.simplePriceData(prices: [.eur: 1], lastUpdatedAt: lastSecondOfYesterday)
+
+        let price = try await sut.fetchCurrentDayPrice(currency: .eur)
+
+        XCTAssertEqual(price.date, CGFixtures.yesterday)
+    }
+
+    private func assertFetchCurrentPriceThrows(
+        _ expectedError: CGBitcoinPriceServiceError,
+        sut: CGBitcoinPriceService,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
         do {
             _ = try await sut.fetchCurrentDayPrice(currency: .eur)
-            XCTFail("Expected decoding error")
+            XCTFail("Expected \(expectedError)", file: file, line: line)
         } catch {
-            XCTAssertEqual(error as? CGBitcoinPriceServiceError, .decodingError)
+            XCTAssertEqual(error as? CGBitcoinPriceServiceError, expectedError, file: file, line: line)
         }
     }
 
@@ -282,6 +385,31 @@ extension CGBitcoinPriceServiceTests {
 
         _ = try? await sut.fetchMultipleCurrenciesPrices(on: CGFixtures.yesterday, currencies: [.eur, .usd, .gbp])
 
+        XCTAssertFalse(cache.storeCalled)
+    }
+
+    func test_OnFetchPrices_WhenTodaysCurrencyPriceIsZero_ShouldThrowMissingPrice() async {
+        let sut = makeSUT()
+        apiClient.dataByPath[Constants.simplePricePath] = CGFixtures.simplePriceData(prices: [.eur: 1, .usd: 2, .gbp: 0])
+
+        do {
+            _ = try await sut.fetchMultipleCurrenciesPrices(on: CGFixtures.now, currencies: [.eur, .usd, .gbp])
+            XCTFail("Expected missing price error")
+        } catch {
+            XCTAssertEqual(error as? CGBitcoinPriceServiceError, .missingPrice(.gbp))
+        }
+    }
+
+    func test_OnFetchPrices_WhenHistoricalPriceIsInvalid_ShouldThrowMissingPriceWithoutCaching() async {
+        let sut = makeSUT()
+        apiClient.dataByPath[Constants.historyPath] = CGFixtures.coinHistoryData(prices: [.eur: 1, .usd: -2, .gbp: 3])
+
+        do {
+            _ = try await sut.fetchMultipleCurrenciesPrices(on: CGFixtures.yesterday, currencies: [.eur, .usd, .gbp])
+            XCTFail("Expected missing price error")
+        } catch {
+            XCTAssertEqual(error as? CGBitcoinPriceServiceError, .missingPrice(.usd))
+        }
         XCTAssertFalse(cache.storeCalled)
     }
 

@@ -27,7 +27,7 @@ nonisolated final class CGPreviewBitcoinPriceService: CGBitcoinPriceServiceType 
         static let basePrice = 96412.08
         static let dailyPriceStep = 312.5
         static let loadingDuration: Duration = .seconds(3600)
-        static let pricesByCurrency: [CGCurrency: Double] = [
+        static let pricesByCurrency: [CGCurrencyType: Double] = [
             .eur: 96412.08,
             .usd: 112305.44,
             .gbp: 83190.17
@@ -47,7 +47,7 @@ nonisolated final class CGPreviewBitcoinPriceService: CGBitcoinPriceServiceType 
 
 nonisolated extension CGPreviewBitcoinPriceService {
 
-    func fetchDailyPricesList(days: Int, currency: CGCurrency) async throws -> [CGDailyPrice] {
+    func fetchDailyPricesList(days: Int, currency: CGCurrencyType) async throws -> [CGDailyPrice] {
         try await simulateBehavior()
 
         guard behavior == .success else {
@@ -70,7 +70,7 @@ nonisolated extension CGPreviewBitcoinPriceService {
         }
     }
 
-    func fetchCurrentDayPrice(currency: CGCurrency) async throws -> CGDailyPrice {
+    func fetchCurrentDayPrice(currency: CGCurrencyType) async throws -> CGDailyPrice {
         try await simulateBehavior()
 
         return CGDailyPrice(
@@ -81,8 +81,12 @@ nonisolated extension CGPreviewBitcoinPriceService {
         )
     }
 
-    func fetchMultipleCurrenciesPrices(on date: Date, currencies: [CGCurrency]) async throws -> [CGCurrency: Double] {
+    func fetchMultipleCurrenciesPrices(on date: Date, currencies: [CGCurrencyType]) async throws -> [CGCurrencyType: Double] {
         try await simulateBehavior()
+
+        guard behavior != .empty else {
+            return [:]
+        }
 
         return Constants.pricesByCurrency.filter { currencies.contains($0.key) }
     }

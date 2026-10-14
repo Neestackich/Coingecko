@@ -17,7 +17,6 @@ nonisolated enum CGAPIClientError: Error, Equatable {
 // MARK: - LocalizedError
 
 nonisolated extension CGAPIClientError: LocalizedError {
-
     var errorDescription: String? {
         switch self {
         case .httpStatus(429):
@@ -31,5 +30,4 @@ nonisolated extension CGAPIClientError: LocalizedError {
             return String(localized: .errorGeneric)
         }
     }
-
 }

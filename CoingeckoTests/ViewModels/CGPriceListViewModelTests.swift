@@ -14,22 +14,19 @@ final class CGPriceListViewModelTests: XCTestCase {
 
     private struct Constants {
         static let newLivePrice = 75012.34
-        static let longDelay: Duration = .seconds(10)
-        static let shortRefreshInterval: Duration = .milliseconds(10)
     }
 
     private func makeSUT(
         priceService: CGBitcoinPriceServiceMock,
-        dateProvider: CGDateProviderMock = CGDateProviderMock(),
-        refreshInterval: Duration = .seconds(60)
+        dateProvider: CGDateProviderMock = CGDateProviderMock()
     ) -> CGPriceListViewModel {
-        return CGPriceListViewModel(priceService: priceService, dateProvider: dateProvider, refreshInterval: refreshInterval)
+        return CGPriceListViewModel(priceService: priceService, dateProvider: dateProvider)
     }
 
-    private func moveToBackgroundAndWait(_ sut: CGPriceListViewModel) async {
-        let task = sut.loadDataTask
+    private func moveToBackgroundAndWait(_ sut: CGPriceListViewModel) async throws {
+        let task = try XCTUnwrap(sut.loadDataTask)
         sut.handleScenePhase(.background)
-        await task?.value
+        await task.value
     }
 
     private func formatted(_ price: Double) -> String {
@@ -204,7 +201,7 @@ extension CGPriceListViewModelTests {
         XCTAssertEqual(sut.rows.first?.isStale, false)
     }
 
-    func test_OnRetry_AfterFailedFirstLoad_ShouldLoadPrices() async {
+    func test_OnRetry_AfterFailedFirstLoad_ShouldShowLoadingThenPrices() async {
         let priceService = CGBitcoinPriceServiceMock()
         priceService.fetchDailyPricesResult = .failure(CGAPIClientError.httpStatus(500))
         let sut = makeSUT(priceService: priceService)
@@ -213,10 +210,13 @@ extension CGPriceListViewModelTests {
         priceService.fetchDailyPricesResult = .success(CGFixtures.dailyPrices())
 
         sut.retry()
+
         XCTAssertEqual(sut.state, .loading)
-        await waitUntil { sut.state == .loaded }
+
+        await waitForNextChange { sut.state }
         sut.handleScenePhase(.background)
 
+        XCTAssertEqual(sut.state, .loaded)
         XCTAssertEqual(sut.rows.count, 14)
     }
 
@@ -231,117 +231,141 @@ extension CGPriceListViewModelTests {
         let sut = makeSUT(priceService: priceService)
 
         sut.handleScenePhase(.active)
-        await waitUntil { sut.state == .loaded }
+        await waitForNextChange { sut.state }
         sut.handleScenePhase(.background)
 
-        XCTAssertTrue(priceService.fetchDailyPricesCalled)
+        XCTAssertEqual(sut.state, .loaded)
+        XCTAssertEqual(sut.rows.count, 14)
         XCTAssertFalse(priceService.fetchCurrentPriceCalled)
     }
 
     func test_OnBecomingActive_WhenTodayIsLoaded_ShouldUpdateOnlyTodaysPrice() async {
         let priceService = CGBitcoinPriceServiceMock()
-        priceService.fetchCurrentPriceResult = .success(makeTodaysPrice(Constants.newLivePrice, updatedAt: CGFixtures.now))
-        let sut = makeSUT(priceService: priceService)
-
+        let dateProvider = CGDateProviderMock()
+        let sut = makeSUT(priceService: priceService, dateProvider: dateProvider)
         await sut.refresh()
+        dateProvider.now = CGFixtures.now.addingTimeInterval(60)
+        priceService.fetchCurrentPriceResult = .success(makeTodaysPrice(Constants.newLivePrice, updatedAt: dateProvider.now))
+
         sut.handleScenePhase(.active)
-        await waitUntil { sut.rows.first?.price == self.formatted(Constants.newLivePrice) }
+        await waitForNextChange { sut.rows }
         sut.handleScenePhase(.background)
 
         XCTAssertEqual(priceService.fetchDailyPricesCallCount, 1)
+        XCTAssertEqual(sut.rows.first?.price, formatted(Constants.newLivePrice))
         XCTAssertEqual(sut.rows.first?.isLive, true)
         XCTAssertEqual(sut.rows[1].price, formatted(CGFixtures.price(daysAgo: 1)))
     }
 
-    func test_OnLiveUpdate_WhenCurrentPriceBelongsToAnotherDay_ShouldKeepTodaysRow() async {
+    func test_OnBecomingActive_WhenCurrentPriceFails_ShouldKeepRowsAndMarkTodayStale() async {
         let priceService = CGBitcoinPriceServiceMock()
-        let otherDayPrice = CGDailyPrice(date: CGFixtures.yesterday, price: 1, currency: .eur, updatedAt: CGFixtures.yesterday)
-        priceService.fetchCurrentPriceResult = .success(otherDayPrice)
-        let sut = makeSUT(priceService: priceService, refreshInterval: Constants.shortRefreshInterval)
-
+        let sut = makeSUT(priceService: priceService)
         await sut.refresh()
-        sut.handleScenePhase(.active)
-        await waitUntil { priceService.fetchCurrentPriceCallCount >= 2 }
-        await moveToBackgroundAndWait(sut)
+        priceService.fetchCurrentPriceResult = .failure(CGAPIClientError.httpStatus(500))
 
-        XCTAssertEqual(sut.rows.first?.id, CGFixtures.today)
+        sut.handleScenePhase(.active)
+        await waitForNextChange { sut.isRefreshFailing }
+        sut.handleScenePhase(.background)
+
+        XCTAssertEqual(sut.state, .loaded)
+        XCTAssertTrue(sut.isRefreshFailing)
+        XCTAssertEqual(sut.rows.first?.isStale, true)
         XCTAssertEqual(sut.rows.first?.price, formatted(CGFixtures.livePrice))
     }
 
-    func test_OnMovingToBackground_WhenRequestIsInFlight_ShouldCancelWithoutShowingError() async {
+    func test_OnBecomingActive_AfterUTCMidnight_ShouldNotMarkYesterdayLiveAndReloadHistory() async {
         let priceService = CGBitcoinPriceServiceMock()
-        priceService.delay = Constants.longDelay
+        let dateProvider = CGDateProviderMock()
+        let sut = makeSUT(priceService: priceService, dateProvider: dateProvider)
+        await sut.refresh()
+        sut.handleScenePhase(.background)
+        dateProvider.now = CGFixtures.today.addingDays(1).addingTimeInterval(5)
+
+        sut.handleScenePhase(.active)
+
+        XCTAssertEqual(sut.rows.first?.isLive, false)
+        XCTAssertNil(sut.rows.first?.updatedTime)
+
+        await waitForNextChange { sut.lastUpdated }
+        sut.handleScenePhase(.background)
+
+        XCTAssertEqual(priceService.fetchDailyPricesCallCount, 2)
+        XCTAssertFalse(priceService.fetchCurrentPriceCalled)
+    }
+
+    func test_OnMovingToBackground_BeforeResponseIsHandled_ShouldNotApplyIt() async throws {
+        let priceService = CGBitcoinPriceServiceMock()
         let sut = makeSUT(priceService: priceService)
 
         sut.handleScenePhase(.active)
-        await waitUntil { priceService.fetchDailyPricesCalled }
-        await moveToBackgroundAndWait(sut)
+        try await moveToBackgroundAndWait(sut)
 
+        XCTAssertTrue(priceService.fetchDailyPricesCalled)
+        XCTAssertNil(sut.loadDataTask)
         XCTAssertEqual(sut.state, .loading)
         XCTAssertNil(sut.lastUpdated)
     }
 
-    func test_OnBecomingActive_WhenFirstLoadFailed_ShouldKeepErrorWhileLoadingAgain() async {
+    func test_OnBecomingActive_WhenFirstLoadFailed_ShouldKeepErrorWhileLoadingAgain() async throws {
         let priceService = CGBitcoinPriceServiceMock()
         let error = CGAPIClientError.transportError(.notConnectedToInternet)
         priceService.fetchDailyPricesResult = .failure(error)
         let sut = makeSUT(priceService: priceService)
         await sut.refresh()
         sut.handleScenePhase(.background)
-        priceService.delay = Constants.longDelay
 
         sut.handleScenePhase(.active)
-        await waitUntil { priceService.fetchDailyPricesCallCount == 2 }
-        sut.handleScenePhase(.background)
 
         XCTAssertEqual(sut.state, .failed(error.localizedDescription))
+
+        try await moveToBackgroundAndWait(sut)
     }
 
-    func test_OnBecomingActive_WhenShownPriceBecameOld_ShouldMarkTodayStaleBeforeRequestFinishes() async {
+    func test_OnBecomingActive_WhenShownPriceBecameOld_ShouldMarkTodayStaleBeforeRequestFinishes() async throws {
         let priceService = CGBitcoinPriceServiceMock()
         let dateProvider = CGDateProviderMock()
         let sut = makeSUT(priceService: priceService, dateProvider: dateProvider)
         await sut.refresh()
         sut.handleScenePhase(.background)
         dateProvider.now = CGFixtures.now.addingTimeInterval(10 * 60)
-        priceService.delay = Constants.longDelay
 
         sut.handleScenePhase(.active)
-        sut.handleScenePhase(.background)
 
         XCTAssertEqual(sut.rows.first?.isStale, true)
         XCTAssertEqual(sut.rows.first?.isLive, false)
+
+        try await moveToBackgroundAndWait(sut)
     }
 
-    func test_OnRefresh_WhenLoadSucceeds_ShouldNotRequestTodaysPriceAgainImmediately() async {
+    func test_OnRefresh_WhenLoadSucceeds_ShouldNotRequestTodaysPriceAgainImmediately() async throws {
         let priceService = CGBitcoinPriceServiceMock()
         let sut = makeSUT(priceService: priceService)
 
         await sut.refresh()
-        await moveToBackgroundAndWait(sut)
+        try await moveToBackgroundAndWait(sut)
 
         XCTAssertFalse(priceService.fetchCurrentPriceCalled)
     }
 
-    func test_OnMovingToBackground_WhenRefreshIsInFlight_ShouldCancelRefreshWithoutChangingState() async {
+    func test_OnRefresh_WhenCancelled_ShouldKeepShownPricesAndNotStartLiveUpdates() async {
         let priceService = CGBitcoinPriceServiceMock()
         let sut = makeSUT(priceService: priceService)
         await sut.refresh()
+        sut.handleScenePhase(.background)
         let lastUpdated = sut.lastUpdated
-        priceService.delay = Constants.longDelay
-        let startTime = ContinuousClock.now
+        let refreshedPrices = CGFixtures.dailyPrices().enumerated().map { index, price in
+            return index == 0 ? makeTodaysPrice(Constants.newLivePrice, updatedAt: CGFixtures.now) : price
+        }
+        priceService.fetchDailyPricesResult = .success(refreshedPrices)
 
         let refresh = Task { await sut.refresh() }
-        await waitUntil { priceService.fetchDailyPricesCallCount == 2 }
-        sut.handleScenePhase(.background)
+        refresh.cancel()
         await refresh.value
 
-        XCTAssertNil(sut.loadDataTask)
-        XCTAssertLessThan(ContinuousClock.now - startTime, Constants.longDelay)
-        XCTAssertEqual(sut.state, .loaded)
-        XCTAssertFalse(sut.isRefreshFailing)
-        XCTAssertEqual(sut.lastUpdated, lastUpdated)
         XCTAssertEqual(priceService.fetchDailyPricesCallCount, 2)
+        XCTAssertEqual(sut.rows.first?.price, formatted(CGFixtures.livePrice))
+        XCTAssertEqual(sut.lastUpdated, lastUpdated)
+        XCTAssertFalse(sut.isRefreshFailing)
         XCTAssertFalse(priceService.fetchCurrentPriceCalled)
     }
 

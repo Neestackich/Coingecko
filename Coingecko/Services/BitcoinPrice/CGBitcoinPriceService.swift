@@ -17,6 +17,7 @@ nonisolated final class CGBitcoinPriceService: CGBitcoinPriceServiceType {
         static let coinId = "bitcoin"
         static let historyCacheKeyPrefix = "coinHistory"
         static let lastUpdatedAtKey = "last_updated_at"
+        static let maxClockSkew: TimeInterval = 60
     }
 
     init(
@@ -35,7 +36,7 @@ nonisolated final class CGBitcoinPriceService: CGBitcoinPriceServiceType {
 
 nonisolated extension CGBitcoinPriceService {
 
-    func fetchDailyPricesList(days: Int, currency: CGCurrency) async throws -> [CGDailyPrice] {
+    func fetchDailyPricesList(days: Int, currency: CGCurrencyType) async throws -> [CGDailyPrice] {
         guard days > 0 else {
             return []
         }
@@ -47,7 +48,7 @@ nonisolated extension CGBitcoinPriceService {
         return makeDailyPrices(from: response.prices, days: days, currency: currency)
     }
 
-    func fetchCurrentDayPrice(currency: CGCurrency) async throws -> CGDailyPrice {
+    func fetchCurrentDayPrice(currency: CGCurrencyType) async throws -> CGDailyPrice {
         let endpoint = CGEndpoint.simplePrice(coinId: Constants.coinId, currencies: [currency])
 
         let data = try await apiClient.sendRequest(endpoint)
@@ -55,15 +56,15 @@ nonisolated extension CGBitcoinPriceService {
 
         let coinPrices = response.prices[Constants.coinId]
 
-        guard let price = coinPrices?[currency.rawValue] else {
+        guard let price = coinPrices?[currency.rawValue],
+              isValidPrice(price) else {
             throw CGBitcoinPriceServiceError.missingPrice(currency)
         }
 
-        guard let lastUpdatedAt = coinPrices?[Constants.lastUpdatedAtKey] else {
+        guard let lastUpdatedAt = coinPrices?[Constants.lastUpdatedAtKey],
+              let updatedAt = makeTimestamp(secondsSince1970: lastUpdatedAt) else {
             throw CGBitcoinPriceServiceError.decodingError
         }
-
-        let updatedAt = Date(timeIntervalSince1970: lastUpdatedAt)
 
         return CGDailyPrice(
             date: dateProvider.calendar.startOfDay(for: updatedAt),
@@ -73,7 +74,7 @@ nonisolated extension CGBitcoinPriceService {
         )
     }
 
-    func fetchMultipleCurrenciesPrices(on date: Date, currencies: [CGCurrency]) async throws -> [CGCurrency: Double] {
+    func fetchMultipleCurrenciesPrices(on date: Date, currencies: [CGCurrencyType]) async throws -> [CGCurrencyType: Double] {
         guard !currencies.isEmpty else {
             return [:]
         }
@@ -94,7 +95,7 @@ nonisolated extension CGBitcoinPriceService {
 
 private nonisolated extension CGBitcoinPriceService {
 
-    func fetchCurrentPrices(currencies: [CGCurrency]) async throws -> [CGCurrency: Double] {
+    func fetchCurrentPrices(currencies: [CGCurrencyType]) async throws -> [CGCurrencyType: Double] {
         let endpoint = CGEndpoint.simplePrice(coinId: Constants.coinId, currencies: currencies)
         let data = try await apiClient.sendRequest(endpoint)
         let response = try decode(CGSimplePriceResponse.self, from: data)
@@ -105,10 +106,10 @@ private nonisolated extension CGBitcoinPriceService {
         return try makePrices(for: currencies, from: currentPrices)
     }
 
-    func fetchHistoricalPrices(on day: Date) async throws -> [CGCurrency: Double] {
+    func fetchHistoricalPrices(on day: Date) async throws -> [CGCurrencyType: Double] {
         let cacheKey = "\(Constants.historyCacheKeyPrefix)-\(Constants.coinId)-\(day.apiDateString(calendar: dateProvider.calendar))"
 
-        if let cachedPrices = cache.value(forKey: cacheKey, as: [CGCurrency: Double].self) {
+        if let cachedPrices = cache.value(forKey: cacheKey, as: [CGCurrencyType: Double].self) {
             return cachedPrices
         } else {
 
@@ -120,7 +121,7 @@ private nonisolated extension CGBitcoinPriceService {
             let currentPrice = response.marketData?.currentPrice ?? [:]
             let prices = makeCurrencyPrices(from: currentPrice)
 
-            if prices.count == CGCurrency.allCases.count {
+            if prices.count == CGCurrencyType.allCases.count {
                 cache.store(prices, forKey: cacheKey)
             }
 
@@ -131,7 +132,7 @@ private nonisolated extension CGBitcoinPriceService {
     func makeDailyPrices(
         from points: [[Double]],
         days: Int,
-        currency: CGCurrency
+        currency: CGCurrencyType
     ) -> [CGDailyPrice] {
         let calendar = dateProvider.calendar
         let today = dateProvider.today
@@ -146,11 +147,12 @@ private nonisolated extension CGBitcoinPriceService {
         latestPointByDay.reserveCapacity(min(days, points.count))
 
         for point in points {
-            guard point.count == 2, point[1] > 0 else {
+            guard point.count == 2,
+                  isValidPrice(point[1]),
+                  let timestamp = makeTimestamp(secondsSince1970: point[0] / 1000) else {
                 continue
             }
 
-            let timestamp = Date(timeIntervalSince1970: point[0] / 1000)
             let day = calendar.startOfDay(for: timestamp)
 
             guard dayRange.contains(day) else {
@@ -177,10 +179,10 @@ private nonisolated extension CGBitcoinPriceService {
     }
 
     func makePrices(
-        for currencies: [CGCurrency],
-        from availablePrices: [CGCurrency: Double]
-    ) throws -> [CGCurrency: Double] {
-        var prices: [CGCurrency: Double] = [:]
+        for currencies: [CGCurrencyType],
+        from availablePrices: [CGCurrencyType: Double]
+    ) throws -> [CGCurrencyType: Double] {
+        var prices: [CGCurrencyType: Double] = [:]
         prices.reserveCapacity(currencies.count)
 
         for currency in currencies {
@@ -194,15 +196,35 @@ private nonisolated extension CGBitcoinPriceService {
         return prices
     }
 
-    func makeCurrencyPrices(from pricesByCode: [String: Double]) -> [CGCurrency: Double] {
-        var prices: [CGCurrency: Double] = [:]
-        prices.reserveCapacity(CGCurrency.allCases.count)
+    func makeCurrencyPrices(from pricesByCode: [String: Double]) -> [CGCurrencyType: Double] {
+        var prices: [CGCurrencyType: Double] = [:]
+        prices.reserveCapacity(CGCurrencyType.allCases.count)
 
-        for currency in CGCurrency.allCases {
-            prices[currency] = pricesByCode[currency.rawValue]
+        for currency in CGCurrencyType.allCases {
+            if let price = pricesByCode[currency.rawValue], isValidPrice(price) {
+                prices[currency] = price
+            }
         }
 
         return prices
+    }
+
+    func isValidPrice(_ price: Double) -> Bool {
+        return price.isFinite && price > 0
+    }
+
+    func makeTimestamp(secondsSince1970 seconds: Double) -> Date? {
+        guard seconds.isFinite, seconds > 0 else {
+            return nil
+        }
+
+        let timestamp = Date(timeIntervalSince1970: seconds)
+
+        guard timestamp <= dateProvider.now.addingTimeInterval(Constants.maxClockSkew) else {
+            return nil
+        }
+
+        return timestamp
     }
 
     func decode<Response: Decodable>(_ type: Response.Type, from data: Data) throws -> Response {

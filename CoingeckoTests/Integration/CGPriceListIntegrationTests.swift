@@ -18,14 +18,14 @@ final class CGPriceListIntegrationTests: XCTestCase {
         static let newLivePrice = 75012.34
     }
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         CGURLProtocolStub.reset()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         CGURLProtocolStub.reset()
-        super.tearDown()
+        try await super.tearDown()
     }
 
     private func makeSUT() -> CGPriceListViewModel {
@@ -93,11 +93,12 @@ extension CGPriceListIntegrationTests {
 
         await sut.refresh()
         sut.handleScenePhase(.active)
-        await waitUntil { sut.rows.first?.price == Constants.newLivePrice.formatted(.currency(code: "EUR")) }
+        await waitForNextChange { sut.rows }
         sut.handleScenePhase(.background)
 
+        XCTAssertEqual(sut.rows.first?.price, Constants.newLivePrice.formatted(.currency(code: "EUR")))
         XCTAssertEqual(CGURLProtocolStub.requests(withPathSuffix: Constants.marketChartPath).count, 1)
-        XCTAssertFalse(CGURLProtocolStub.requests(withPathSuffix: Constants.simplePricePath).isEmpty)
+        XCTAssertEqual(CGURLProtocolStub.requests(withPathSuffix: Constants.simplePricePath).count, 1)
     }
 
     func test_OnRefresh_WhenAPIRateLimits_ShouldShowTooManyRequestsError() async {
@@ -117,9 +118,10 @@ extension CGPriceListIntegrationTests {
 
         await sut.refresh()
         sut.handleScenePhase(.active)
-        await waitUntil { sut.isRefreshFailing }
+        await waitForNextChange { sut.isRefreshFailing }
         sut.handleScenePhase(.background)
 
+        XCTAssertTrue(sut.isRefreshFailing)
         XCTAssertEqual(sut.state, .loaded)
         XCTAssertEqual(sut.rows.count, 14)
         XCTAssertEqual(sut.rows.first?.isStale, true)

@@ -27,11 +27,9 @@ struct CGPriceRowView: View {
                     Text(data.date)
 
                     if data.isLive {
-                        makeBadge(text: Text(.priceListLiveBadge), color: .green)
-                    }
-
-                    if data.isStale {
-                        makeBadge(text: Text(.priceListStaleBadge), color: .orange)
+                        makeBadge(text: .priceListLiveBadge, color: .green)
+                    } else if data.isStale {
+                        makeBadge(text: .priceListStaleBadge, color: .orange)
                     }
                 }
 
@@ -53,8 +51,8 @@ struct CGPriceRowView: View {
 // MARK: - Private
 
 private extension CGPriceRowView {
-    func makeBadge(text: Text, color: Color) -> some View {
-        text
+    func makeBadge(text: LocalizedStringResource, color: Color) -> some View {
+        Text(text)
             .font(.caption.bold())
             .foregroundStyle(color)
             .padding(.horizontal, Constants.badgeHorizontalPadding)

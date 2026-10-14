@@ -12,7 +12,7 @@ nonisolated struct CGDailyPrice: Identifiable,
                                  Sendable {
     let date: Date
     let price: Double
-    let currency: CGCurrency
+    let currency: CGCurrencyType
     let updatedAt: Date
 
     var id: Date {

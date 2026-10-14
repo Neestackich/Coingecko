@@ -11,6 +11,7 @@ struct CGPriceDetailView: View {
     @State private var viewModel: CGPriceDetailViewModel
 
     private struct Constants {
+        static let emptyIconName = "bitcoinsign.circle"
         static let rowIdentifierPrefix = "priceDetailRow_"
     }
 
@@ -37,8 +38,10 @@ private extension CGPriceDetailView {
     @ViewBuilder
     var content: some View {
         switch viewModel.state {
-        case .loading, .loaded, .empty:
+        case .loading, .loaded:
             pricesList
+        case .empty:
+            emptyView
         case .failed(let message):
             CGErrorStateView(message: message, retry: viewModel.retryLoading)
         }
@@ -60,6 +63,23 @@ private extension CGPriceDetailView {
         .redacted(reason: viewModel.state == .loading ? .placeholder : [])
         .disabled(viewModel.state == .loading)
     }
+
+    var emptyView: some View {
+        ContentUnavailableView {
+            Label {
+                Text(.priceDetailEmptyTitle)
+            } icon: {
+                Image(systemName: Constants.emptyIconName)
+            }
+        } description: {
+            Text(.priceDetailEmptyDescription)
+        } actions: {
+            Button(action: viewModel.retryLoading) {
+                Text(.buttonRetry)
+            }
+        }
+    }
+
 }
 
 #if DEBUG
@@ -89,6 +109,16 @@ private extension CGPriceDetailView {
         CGPriceDetailView(viewModel: CGPriceDetailViewModel(
             date: .now,
             priceService: CGPreviewBitcoinPriceService(behavior: .failure),
+            dateProvider: CGDateProvider()
+        ))
+    }
+}
+
+#Preview("Empty") {
+    NavigationStack {
+        CGPriceDetailView(viewModel: CGPriceDetailViewModel(
+            date: .now,
+            priceService: CGPreviewBitcoinPriceService(behavior: .empty),
             dateProvider: CGDateProvider()
         ))
     }

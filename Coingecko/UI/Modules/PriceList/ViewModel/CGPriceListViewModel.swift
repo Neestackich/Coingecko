@@ -25,11 +25,10 @@ final class CGPriceListViewModel {
 
     private let priceService: CGBitcoinPriceServiceType
     private let dateProvider: CGDateProviderType
-    private let refreshInterval: Duration
 
     private struct Constants {
         static let days = 14
-        static let currency: CGCurrency = .eur
+        static let currency: CGCurrencyType = .eur
         static let refreshInterval: Duration = .seconds(60)
         static let maxLivePriceAge: TimeInterval = 5 * 60
     }
@@ -39,11 +38,9 @@ final class CGPriceListViewModel {
     init(
         priceService: CGBitcoinPriceServiceType,
         dateProvider: CGDateProviderType,
-        refreshInterval: Duration = Constants.refreshInterval
     ) {
         self.priceService = priceService
         self.dateProvider = dateProvider
-        self.refreshInterval = refreshInterval
     }
 
 }
@@ -123,14 +120,14 @@ private extension CGPriceListViewModel {
     func startLiveUpdatesLoop(updatingImmediately: Bool) {
         loadDataTask?.cancel()
 
-        loadDataTask = Task { [weak self, refreshInterval] in
+        loadDataTask = Task { [weak self] in
             if updatingImmediately {
                 await self?.loadLatestPrices()
             }
 
             while !Task.isCancelled {
                 do {
-                    try await Task.sleep(for: refreshInterval)
+                    try await Task.sleep(for: Constants.refreshInterval)
                 } catch {
                     return
                 }
@@ -173,8 +170,15 @@ private extension CGPriceListViewModel {
 
             try Task.checkCancellation()
 
-            guard todaysPrice.date == day,
-                  dailyPrices.first?.date == day else {
+            guard dateProvider.isDateSameAsToday(day) else {
+                await loadHistory()
+                return
+            }
+
+            guard let shownPrice = dailyPrices.first,
+                  shownPrice.date == day,
+                  todaysPrice.date == day,
+                  todaysPrice.updatedAt >= shownPrice.updatedAt else {
                 return
             }
 

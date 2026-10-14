@@ -10,7 +10,7 @@ import Foundation
 nonisolated struct CGPriceDetailRowBindableData: Identifiable,
                                                  Hashable,
                                                  Sendable {
-    let id: CGCurrency
+    let id: CGCurrencyType
     let code: String
     let name: String
     let price: String
@@ -25,7 +25,7 @@ nonisolated extension CGPriceDetailRowBindableData {
         static let placeholderPrice = "€00,000.00"
     }
 
-    static func placeholders(for currencies: [CGCurrency]) -> [CGPriceDetailRowBindableData] {
+    static func placeholders(for currencies: [CGCurrencyType]) -> [CGPriceDetailRowBindableData] {
         return currencies.map { currency in
             return CGPriceDetailRowBindableData(
                 id: currency,

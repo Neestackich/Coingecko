@@ -19,13 +19,13 @@ final class CGCacheTests: XCTestCase {
 
         sut.store(CGFixtures.historicalPrices, forKey: Constants.key)
 
-        XCTAssertEqual(sut.value(forKey: Constants.key, as: [CGCurrency: Double].self), CGFixtures.historicalPrices)
+        XCTAssertEqual(sut.value(forKey: Constants.key, as: [CGCurrencyType: Double].self), CGFixtures.historicalPrices)
     }
 
     func test_OnValue_WhenKeyIsUnknown_ShouldReturnNil() {
         let sut = CGCache()
 
-        XCTAssertNil(sut.value(forKey: Constants.key, as: [CGCurrency: Double].self))
+        XCTAssertNil(sut.value(forKey: Constants.key, as: [CGCurrencyType: Double].self))
     }
 
     func test_OnValue_WhenStoredTypeIsDifferent_ShouldReturnNil() {
@@ -33,7 +33,7 @@ final class CGCacheTests: XCTestCase {
 
         sut.store("text", forKey: Constants.key)
 
-        XCTAssertNil(sut.value(forKey: Constants.key, as: [CGCurrency: Double].self))
+        XCTAssertNil(sut.value(forKey: Constants.key, as: [CGCurrencyType: Double].self))
     }
 
     func test_OnStore_WhenKeyExists_ShouldReplaceValue() {

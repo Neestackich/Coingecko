@@ -12,8 +12,7 @@ import XCTest
 final class CGPriceDetailViewModelTests: XCTestCase {
 
     private struct Constants {
-        static let currencies: [CGCurrency] = [.eur, .usd, .gbp]
-        static let longDelay: Duration = .seconds(10)
+        static let currencies: [CGCurrencyType] = [.eur, .usd, .gbp]
     }
 
     private func makeSUT(
@@ -21,6 +20,12 @@ final class CGPriceDetailViewModelTests: XCTestCase {
         priceService: CGBitcoinPriceServiceMock = CGBitcoinPriceServiceMock()
     ) -> CGPriceDetailViewModel {
         return CGPriceDetailViewModel(date: date, priceService: priceService, dateProvider: CGDateProviderMock())
+    }
+
+    private func loadDataAndWait(_ sut: CGPriceDetailViewModel) async throws {
+        sut.loadData()
+        let loadTask = try XCTUnwrap(sut.loadTask)
+        await loadTask.value
     }
 
 }
@@ -36,62 +41,61 @@ extension CGPriceDetailViewModelTests {
         XCTAssertEqual(sut.rows.map(\.id), Constants.currencies)
     }
 
-    func test_OnStartLoading_ShouldRequestAllCurrenciesForSelectedDay() async {
+    func test_OnStartLoading_ShouldRequestAllCurrenciesForSelectedDay() async throws {
         let priceService = CGBitcoinPriceServiceMock()
         let sut = makeSUT(priceService: priceService)
 
-        sut.loadData()
-        await waitUntil { sut.state == .loaded }
+        try await loadDataAndWait(sut)
 
         XCTAssertEqual(priceService.requestedDate, CGFixtures.yesterday)
         XCTAssertEqual(priceService.requestedCurrencies, Constants.currencies)
     }
 
-    func test_OnStartLoading_WhenPricesLoad_ShouldShowFormattedRowsInCurrencyOrder() async {
+    func test_OnStartLoading_WhenPricesLoad_ShouldShowFormattedRowsInCurrencyOrder() async throws {
         let sut = makeSUT()
 
-        sut.loadData()
-        await waitUntil { sut.state == .loaded }
+        try await loadDataAndWait(sut)
 
+        XCTAssertEqual(sut.state, .loaded)
         XCTAssertEqual(sut.rows.map(\.code), ["EUR", "USD", "GBP"])
         XCTAssertEqual(sut.rows.first?.price, CGFixtures.historicalPrices[.eur]!.formatted(.currency(code: "EUR")))
         XCTAssertEqual(sut.rows.first?.name, Locale.current.localizedString(forCurrencyCode: "EUR"))
     }
 
-    func test_OnStartLoading_WhenNoPricesReturned_ShouldShowEmptyState() async {
+    func test_OnStartLoading_WhenNoPricesReturned_ShouldShowEmptyState() async throws {
         let priceService = CGBitcoinPriceServiceMock()
         priceService.fetchPricesResult = .success([:])
         let sut = makeSUT(priceService: priceService)
 
-        sut.loadData()
-        await waitUntil { sut.state == .empty }
+        try await loadDataAndWait(sut)
 
+        XCTAssertEqual(sut.state, .empty)
         XCTAssertTrue(sut.rows.isEmpty)
     }
 
-    func test_OnStartLoading_WhenRequestFails_ShouldShowFailedStateWithMessage() async {
+    func test_OnStartLoading_WhenRequestFails_ShouldShowFailedStateWithMessage() async throws {
         let priceService = CGBitcoinPriceServiceMock()
         let error = CGBitcoinPriceServiceError.missingPrice(.gbp)
         priceService.fetchPricesResult = .failure(error)
         let sut = makeSUT(priceService: priceService)
 
-        sut.loadData()
-        await waitUntil { sut.state != .loading }
+        try await loadDataAndWait(sut)
 
         XCTAssertEqual(sut.state, .failed(error.localizedDescription))
     }
 
-    func test_OnRetry_AfterFailure_ShouldLoadPrices() async {
+    func test_OnRetry_AfterFailure_ShouldLoadPrices() async throws {
         let priceService = CGBitcoinPriceServiceMock()
         priceService.fetchPricesResult = .failure(CGAPIClientError.httpStatus(500))
         let sut = makeSUT(priceService: priceService)
-        sut.loadData()
-        await waitUntil { sut.state != .loading }
+        try await loadDataAndWait(sut)
         priceService.fetchPricesResult = .success(CGFixtures.historicalPrices)
 
         sut.retryLoading()
-        await waitUntil { sut.state == .loaded }
+        let retryTask = try XCTUnwrap(sut.loadTask)
+        await retryTask.value
 
+        XCTAssertEqual(sut.state, .loaded)
         XCTAssertEqual(sut.rows.count, 3)
     }
 
@@ -101,30 +105,28 @@ extension CGPriceDetailViewModelTests {
 
 extension CGPriceDetailViewModelTests {
 
-    func test_OnStopLoading_WhenRequestIsInFlight_ShouldCancelWithoutShowingError() async {
+    func test_OnStopLoading_BeforeResponseIsHandled_ShouldNotApplyIt() async throws {
         let priceService = CGBitcoinPriceServiceMock()
-        priceService.delay = Constants.longDelay
         let sut = makeSUT(priceService: priceService)
 
         sut.loadData()
-        await waitUntil { priceService.fetchPricesCalled }
-        let loadTask = sut.loadTask
+        let loadTask = try XCTUnwrap(sut.loadTask)
         sut.cancelDataLoading()
-        await loadTask?.value
+        await loadTask.value
 
+        XCTAssertTrue(priceService.fetchPricesCalled)
+        XCTAssertNil(sut.loadTask)
         XCTAssertEqual(sut.state, .loading)
     }
 
-    func test_OnStartLoading_WhenServiceIsCancelled_ShouldNotShowError() async {
+    func test_OnStartLoading_WhenServiceIsCancelled_ShouldNotShowError() async throws {
         let priceService = CGBitcoinPriceServiceMock()
         priceService.fetchPricesResult = .failure(CancellationError())
         let sut = makeSUT(priceService: priceService)
 
-        sut.loadData()
-        await sut.loadTask?.value
+        try await loadDataAndWait(sut)
 
         XCTAssertTrue(priceService.fetchPricesCalled)
-
         XCTAssertEqual(sut.state, .loading)
     }
 
