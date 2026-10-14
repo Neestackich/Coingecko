@@ -73,9 +73,7 @@ View  →  ViewModel  →  CGBitcoinPriceService  →  CGAPIClient  →  URLSess
 ## Decisions and trade-offs
 
 - **Days are UTC days.** CoinGecko's daily prices are taken at 00:00 UTC, so the list groups prices by UTC day and labels them in UTC. For users far from UTC this means "today" can differ from their local date. For example, at 21:00 in New York the top row already shows the next day.
-- **Past days show the 00:00 UTC price** on both the list and the detail screen. The two screens use different endpoints; in testing they return identical prices, but CoinGecko doesn't document that they always will.
 - **Missing days are shown as missing.** If CoinGecko returns fewer than 14 days, the list shows the days it has instead of failing completely. History points with an invalid price (zero, negative or non-finite) or an invalid timestamp are skipped. An invalid price on the live or detail requests is reported as an error instead of being shown.
-- **Timestamps more than 60 seconds in the future are rejected.** A future timestamp would make a price look fresh indefinitely. The 60-second allowance covers small differences between the device clock and CoinGecko's.
 - **Today's price is only replaced by a newer one.** A live update that is older than the price on screen is ignored. If the UTC day changes while a live update is in flight, the list reloads the history instead.
 - **Midnight UTC while the app is open:** the rows are recalculated on the next 60-second update, so yesterday's row can keep its Live badge for up to a minute after midnight.
 - **Freshness depends on CoinGecko.** On the free API, prices are usually 20–120 seconds old when they arrive. That's why "Stale(!)" uses a 5-minute limit rather than 60 seconds.
