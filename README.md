@@ -6,7 +6,22 @@ An iOS app that shows the Bitcoin price in EUR for the last 14 days, including t
 
 - Xcode 26 or later
 - iOS 17 or later
-- No third-party dependencies
+
+## Tech stack
+
+Only Apple frameworks; no third-party dependencies.
+
+| Area | Technology |
+|---|---|
+| Language | Swift 6 with strict concurrency checking; main-actor isolation by default in the app target |
+| UI | SwiftUI: `NavigationStack`, `List` with pull-to-refresh, `ContentUnavailableView`, redacted placeholders |
+| State | Observation (`@Observable` view models) |
+| Concurrency | async/await, `Task` with cooperative cancellation, `withTaskCancellationHandler` |
+| Networking | `URLSession` with `async` APIs, `Codable` / `JSONDecoder` |
+| Caching | `NSCache` (in memory) |
+| Localization | String Catalog (`Localizable.xcstrings`) with generated type-safe string symbols |
+| Configuration | `APIConfig.plist` for the base URL; `.xcconfig` files and `Info.plist` for the optional API key |
+| Testing | XCTest (unit and integration tests), XCUITest, a `URLProtocol` stub for fake network responses |
 
 ## Getting started
 
